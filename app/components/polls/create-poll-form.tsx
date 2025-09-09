@@ -70,6 +70,25 @@ export function CreatePollForm() {
     return true;
   };
 
+  // Helper function to handle poll creation API call
+  const createPoll = async (pollData: any, authHeader: { Authorization?: string }) => {
+    const response = await fetch('/api/polls', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeader
+      },
+      body: JSON.stringify(pollData)
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to create poll');
+    }
+
+    return response.json();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -87,21 +106,7 @@ export function CreatePollForm() {
         createdBy: user?.id
       };
 
-      const response = await fetch('/api/polls', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeader()
-        },
-        body: JSON.stringify(pollData)
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to create poll');
-      }
-
-      const result = await response.json();
+      const result = await createPoll(pollData, getAuthHeader());
 
       toast({
         title: "Success",
