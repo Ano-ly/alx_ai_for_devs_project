@@ -1,49 +1,38 @@
 'use client';
 
-import { PollCard, Poll } from "../../components/polls/poll-card";
-import { Button } from "../../components/ui/button";
-import Link from "next/link";
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/hooks/use-auth'; // Assuming you have an auth hook
+import { useCopyToClipboard } from '@/app/hooks/use-copy-to-clipboard';
+import Link from "next/link";
+import { Poll } from "../../components/polls/poll-card";
 
-// Mock data for initial development
-const mockPolls = {
-  "1": {
-    id: "1",
-    title: "What's your favorite programming language?",
-    description: "Vote for your preferred language for web development",
-    options: [
-      { id: "1", text: "JavaScript", votes: 42 },
-      { id: "2", text: "Python", votes: 35 },
-      { id: "3", text: "TypeScript", votes: 28 },
-      { id: "4", text: "Java", votes: 15 },
-    ],
-    totalVotes: 120,
-    createdBy: "John Doe",
-    createdAt: "2023-05-15T10:30:00Z",
-  },
-  "2": {
-    id: "2",
-    title: "Which frontend framework do you prefer?",
-    description: null,
-    options: [
-      { id: "1", text: "React", votes: 55 },
-      { id: "2", text: "Vue", votes: 32 },
-      { id: "3", text: "Angular", votes: 18 },
-      { id: "4", text: "Svelte", votes: 25 },
-    ],
-    totalVotes: 130,
-    createdBy: "Jane Smith",
-    createdAt: "2023-05-10T14:20:00Z",
-  },
-};
+interface PollOption {
+  id: string;
+  text: string;
+  votes: number;
+}
 
-import { useToast } from '../../components/ui/use-toast';
+interface Poll {
+  id: string;
+  title: string;
+  description?: string;
+  options: PollOption[];
+  createdBy?: string;
+  createdAt: string;
+}
 
 export default function PollDetailPage({ params }: { params: { id: string } }) {
   const { toast } = useToast();
   const [poll, setPoll] = useState<Poll | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { user } = useAuth();
+  const router = useRouter();
+  const [isCopied, copyLink] = useCopyToClipboard();
 
   const fetchPoll = useCallback(async () => {
     try {
@@ -55,14 +44,61 @@ export default function PollDetailPage({ params }: { params: { id: string } }) {
       setPoll(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch poll');
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "Failed to load poll.",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
-  }, [params.id]);
+  }, [params.id, toast]);
 
   useEffect(() => {
     fetchPoll();
   }, [fetchPoll]);
+
+  const handleVote = async (optionId: string) => {
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "You must be logged in to vote.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/polls/${params.id}/vote`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.token}`,
+        },
+        body: JSON.stringify({ optionId, userId: user.id }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to cast vote');
+      }
+
+      toast({
+        title: "Vote Cast",
+        description: "Your vote has been recorded.",
+      });
+      fetchPoll(); // Refresh poll data after voting
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "Failed to cast vote.",
+        variant: "destructive",
+      });
+      console.error('Error casting vote:', err);
+    }
+  };
+
+  const pollUrl = typeof window !== 'undefined' ? window.location.href : '';
 
   if (loading) {
     return (
@@ -96,7 +132,37 @@ export default function PollDetailPage({ params }: { params: { id: string } }) {
         </Link>
       </div>
 
-      <PollCard poll={poll} />
+      <Card className="w-full max-w-2xl mx-auto">
+        <CardHeader>
+          <CardTitle className="text-xl">{poll.title}</CardTitle>
+          {poll.description && <CardDescription>{poll.description}</CardDescription>}
+          <div className="text-xs text-muted-foreground mt-2">
+            Created by {poll.createdBy} • {new Date(poll.createdAt).toLocaleDateString()}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            {poll.options.map((option) => (
+              <div key={option.id} className="flex items-center gap-2">
+                <label
+                  htmlFor={option.id}
+                  className="flex-1 cursor-pointer"
+                >
+                  {option.text}
+                </label>
+                <Button onClick={() => handleVote(option.id)} disabled={!user} className="ml-4">
+                  Vote
+                </Button>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+        <CardFooter className="flex justify-end pt-4">
+          <Button onClick={() => copyLink(pollUrl)} variant="outline">
+            {isCopied ? 'Copied!' : 'Copy Link'}
+          </Button>
+        </CardFooter>
+      </Card>
 
       <div className="mt-8 flex justify-end">
         <Link href={`/polls/${params.id}/results`}>

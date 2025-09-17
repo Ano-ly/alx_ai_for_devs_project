@@ -69,7 +69,6 @@ export function CreatePollForm() {
     }
     return true;
   };
-
   // Helper function to handle poll creation API call
   const createPoll = async (pollData: any, authHeader: { Authorization?: string }) => {
     const response = await fetch('/api/polls', {
